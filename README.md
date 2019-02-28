@@ -15,7 +15,13 @@ my_token = sd.get_default_token()
 # get_current_token() needs the token service handle
 # the function returns a tuple of the passcode, tokencode, and time left
 # I may change the Token object to inherit SDProcess so it has the handle
+
+# For pinless tokens, returned passcode and tokencode will be identical
 pc, tc, tl = my_token.get_current_code(sd)
+
+# For tokens that require a pin before getting the code
+# pin = '1234'  # you should really prompt for the pin
+# pc, tc, tl = my_token.get_current_code(sd, pin)
 print("PassCode: {0}\nToken Code: {1}\nTime Left: {2}".format(pc, tc, tl))
 
 # You can also get the expiration date of the token

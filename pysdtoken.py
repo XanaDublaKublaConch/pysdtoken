@@ -63,8 +63,8 @@ class Token():
     def get_expiration_dat(self, token_service):
         return token_service.get_token_expiration_date(self.serialnumber)
 
-    def get_current_code(self, token_service):
-        return token_service.get_token_current_code(self.serialnumber)
+    def get_current_code(self, token_service, pin=''):
+        return token_service.get_token_current_code(self.serialnumber, pin)
 
 class SDProcess():
 

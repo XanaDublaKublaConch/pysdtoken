@@ -3,13 +3,13 @@ Provide python access to th eRSA Soft Token Service
 This module wraps the stauto32.dll calls using
 ctypes to get the current code from the token
 """
-from ctypes.wintypes import LONG
+
 from ctypes import *
 
 # A struct to hold token error information
 class struct_tagTOKENERRORINFO(Structure):
-    _pack = True  # source:False
-    _fields = [
+    _pack_ = 1  # source:False
+    _fields_ = [
         ('error', c_int32),
         ('error_string', c_char * 24),
         ('detailed_error_string', c_char * 64),
@@ -21,9 +21,9 @@ token_error_info = struct_tagTOKENERRORINFO
 
 # A struct to hold token information
 class struct_tagTOKENBASICINFO(Structure):
-    _pack = True  # source:False
-    _fields = [
-        ('dwSize', c_uint32),
+    _pack_ = 1  # source:False
+    _fields_ = [
+        ('dwSize', c_long),
         ('serialnumber', c_char * 24),
         ('username', c_char * 24),
         ('deviceID', c_char * 24),
@@ -47,7 +47,7 @@ class struct_CK_DATE(Structure):
 CKDATE = struct_CK_DATE
 
 
-class Token():
+class Token:
     """
     Token object to hold token info and function calls
     """
@@ -66,21 +66,22 @@ class Token():
     def get_current_code(self, token_service, pin=''):
         return token_service.get_token_current_code(self.serialnumber, pin)
 
-class SDProcess():
+
+class SDProcess:
 
     tokens = []
-    lTokens = LONG()
+    lTokens = c_long()
 
     def __init__(self):
         # Get the SD process
         try:
-            self.process = OleDLL('stauto32.dll')
+            self.process = cdll.LoadLibrary('stauto32.dll')
         except Exception as e:
             print(e)
             print("Error finding Soft Token service.")
 
-        self.handle = LONG()
-        self.lDefaultToken = LONG()
+        self.handle = c_long()
+        self.lDefaultToken = c_long()
         self.open_service()
         # Populate lTokens and dwBuffersize
         self.dwBuffersize = self.count_tokens()
@@ -102,7 +103,7 @@ class SDProcess():
     def close_service(self):
         try:
             # > 0 means success
-            if self.process.CloseTokenService(byref(self.handle)) > 0:
+            if self.process.CloseTokenService(self.handle) > 0:
                 print("DEBUG: Token Service closed")
             else:
                 print("Could not close token service.")
@@ -112,7 +113,7 @@ class SDProcess():
 
     def count_tokens(self):
         # See if there are any registered tokens and set up the buffer
-        dwBuffersize = LONG()
+        dwBuffersize = c_long()
         try:
             # lTokens gets filled with the token count. Don't provide a token array pointer yet
             # Send 0 the first time in case there are no tokens to grab
@@ -140,7 +141,7 @@ class SDProcess():
             return {}
 
         # Create an array of token structs
-        lpTokens = (token_basic_info * self.lTokens.value)
+        lpTokens = (token_basic_info * self.lTokens.value)()
         tokens = []
 
         # There are lTokens # of tokens. Get them in an array. The dwBuffersize has to have been set
@@ -160,15 +161,15 @@ class SDProcess():
 
         # Grab the token basic info for each token into a Token array. All stauto32 strings are utf-8
         for x, token in enumerate(lpTokens):
-            token_data = []
-            token_data['serialnumber'] = token.serialnumber.decode("utf-8")
-            token_data['username'] = token.username.decode("utf-8")
-            token_data['deviceID'] = token.deviceID
-            token_data['descriptor'] = token.descriptor
+            token_data = {}
+            token_data.update({'serialnumber': token.serialnumber.decode('utf-8')})
+            token_data.update({'username': token.username.decode('utf-8')})
+            token_data.update({'deviceID': token.deviceID})
+            token_data.update({'descriptor': token.descriptor})
             if self.lDefaultToken.value == x:
-                token_data['is_default'] = True
+                token_data.update({'is_default': True})
             else:
-                token_data['is_default'] = False
+                token_data.update({'is_default': False})
             tokens.append(Token(token_data))
         return tokens
 
@@ -183,15 +184,15 @@ class SDProcess():
         # return a tuple of code + time-left
         chPASSCODE = c_char_p("".encode("utf-8"))
         chPRN = c_char_p("".encode("utf-8"))
-        lTimeLeft = LONG()
+        lTimeLeft = c_long()
         try:
-            self.process.GetCurrentCode(self.handle, serial.encode("utf-8"), pin,
+            self.process.GetCurrentCode(self.handle, serial.encode("utf-8"), pin.encode("utf-8"),
                                         byref(lTimeLeft), chPASSCODE, chPRN)
         except Exception as e:
             print(e)
             print("Error getting token code.")
         # On pinless tokens, PASSCODE and PRN will be the same
-        return (chPASSCODE.value.decode('utf-8'), chPRN.value.decode('utf-8'), lTimeLeft.value)
+        return chPASSCODE.value.decode('utf-8'), chPRN.value.decode('utf-8'), lTimeLeft.value
 
     def get_token_expiration_date(self, serial):
         # Get the expiration date of the token with this serial number
@@ -210,7 +211,7 @@ class SDProcess():
                 token_expiration = None
         except Exception as e:
             print(e)
-            print("Error getting token exiration date.")
+            print("Error getting token expiration date.")
             token_expiration = None
 
         return token_expiration

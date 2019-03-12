@@ -103,7 +103,7 @@ class SDProcess:
     def close_service(self):
         try:
             # > 0 means success
-            if self.process.CloseTokenService(self.handle) > 0:
+            if self.process.CloseTokenService(self.handle.value) > 0:
                 print("DEBUG: Token Service closed")
             else:
                 print("Could not close token service.")

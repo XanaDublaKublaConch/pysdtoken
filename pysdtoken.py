@@ -182,8 +182,8 @@ class SDProcess:
     def get_token_current_code(self, serial, pin=''):
         # get the current code that would be displayed on the token screen
         # return a tuple of code + time-left
-        chPASSCODE = c_char_p("".encode("utf-8"))
-        chPRN = c_char_p("".encode("utf-8"))
+        chPASSCODE = c_char_p("one".encode("utf-8"))
+        chPRN = c_char_p("two".encode("utf-8"))
         lTimeLeft = c_long()
         try:
             self.process.GetCurrentCode(self.handle, serial.encode("utf-8"), pin.encode("utf-8"),

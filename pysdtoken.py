@@ -133,18 +133,24 @@ class SDProcess:
 
     tokens = []
     lTokens = c_long()
-    dll_name = 'stauto32.dll'
 
-    def __init__(self):
+    def __init__(self, dll_name=''):
         # Get the SD process
+
+        self.dll_name = dll_name
+
         if platform.system() == 'Windows':
             try:
+                if self.dll_name == '':
+                    self.dll_name = 'stauto32.dll'  # Is there a default location on windows?
                 self.process = windll.LoadLibrary(self.dll_name)
             except Exception as e:
                 print(e)
                 print("Error finding Soft Token service.")
         else:
             try:
+                if self.dll_name == '':
+                    self.dll_name = '/Library/Frameworks/stauto32.framework/Versions/Current/stauto32'
                 self.process = cdll.LoadLibrary(self.dll_name)
             except Exception as e:
                 print(e)

@@ -140,16 +140,18 @@ class SDProcess:
     def __init__(self, dll_name='', log_level=''):
         # Get the SD process
 
-        if log_level.casefold() == 'DEBUG'.casefold():
-            n_log_level = logging.DEBUG
+        if log_level.casefold() == 'NOTSET'.casefold():
+            n_log_level = logging.NOTSET
         elif log_level.casefold() == 'CRITICAL'.casefold():
             n_log_level = logging.CRITICAL
         elif log_level.casefold() == 'ERROR'.casefold():
             n_log_level = logging.ERROR
+        elif log_level.casefold() == 'Warning'.casefold():
+            n_log_level = logging.WARNING
         elif log_level.casefold() == 'INFO'.casefold():
             n_log_level = logging.INFO
-        elif log_level.casefold() == 'NOTSET'.casefold():
-            n_log_level = logging.NOTSET
+        elif log_level.casefold() == 'DEBUG'.casefold():
+            n_log_level = logging.DEBUG
         else:
             n_log_level = logging.WARNING
             logger.warning('Log level: {} is not a supported option. Set to warning.'.format(log_level))

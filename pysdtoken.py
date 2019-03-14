@@ -148,8 +148,11 @@ class SDProcess:
             n_log_level = logging.ERROR
         elif log_level.casefold() == 'INFO'.casefold():
             n_log_level = logging.INFO
+        elif log_level.casefold() == 'NOTSET'.casefold():
+            n_log_level = logging.NOTSET
         else:
             n_log_level = logging.WARNING
+            logger.warning(f'Log level: {log_level} is not a supported option. Set to warning.')
 
         if log_level != '':
             logger.setLevel(n_log_level)

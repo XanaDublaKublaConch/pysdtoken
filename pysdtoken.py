@@ -152,7 +152,7 @@ class SDProcess:
             n_log_level = logging.NOTSET
         else:
             n_log_level = logging.WARNING
-            logger.warning(f'Log level: {log_level} is not a supported option. Set to warning.')
+            logger.warning('Log level: {} is not a supported option. Set to warning.'.format(log_level))
 
         if log_level != '':
             logger.setLevel(n_log_level)

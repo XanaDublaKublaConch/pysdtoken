@@ -6,7 +6,10 @@ ctypes to get the current code from the token
 import platform
 from ctypes import *
 from enum import Enum
+import logging
 
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler())
 
 # A struct to hold token error information
 class struct_tagTOKENERRORINFO(Structure):
@@ -134,8 +137,27 @@ class SDProcess:
     tokens = []
     lTokens = c_long()
 
-    def __init__(self, dll_name=''):
+    def __init__(self, dll_name='', log_level=''):
         # Get the SD process
+
+        if log_level.casefold() == 'NOTSET'.casefold():
+            n_log_level = logging.NOTSET
+        elif log_level.casefold() == 'CRITICAL'.casefold():
+            n_log_level = logging.CRITICAL
+        elif log_level.casefold() == 'ERROR'.casefold():
+            n_log_level = logging.ERROR
+        elif log_level.casefold() == 'Warning'.casefold():
+            n_log_level = logging.WARNING
+        elif log_level.casefold() == 'INFO'.casefold():
+            n_log_level = logging.INFO
+        elif log_level.casefold() == 'DEBUG'.casefold():
+            n_log_level = logging.DEBUG
+        else:
+            n_log_level = logging.WARNING
+            logger.warning('Log level: {} is not a supported option. Set to warning.'.format(log_level))
+
+        if log_level != '':
+            logger.setLevel(n_log_level)
 
         self.dll_name = dll_name
 
@@ -145,51 +167,50 @@ class SDProcess:
                     self.dll_name = 'stauto32.dll'  # Is there a default location on windows?
                 self.process = windll.LoadLibrary(self.dll_name)
             except Exception as e:
-                print(e)
-                print("Error finding Soft Token service.")
+                logger.debug(e)
+                logger.error("Error finding Soft Token service.")
         else:
             try:
                 if self.dll_name == '':
                     self.dll_name = '/Library/Frameworks/stauto32.framework/Versions/Current/stauto32'
                 self.process = cdll.LoadLibrary(self.dll_name)
             except Exception as e:
-                print(e)
-                print("Error finding Soft Token service.")
+                logger.debug(e)
+                logger.error("Error finding Soft Token service.")
 
         self.handle = c_long()
         self.lDefaultToken = c_long()
         self.open_service()
         # Populate lTokens and dwBuffersize
         self.dwBuffersize = self.count_tokens()
-        print("DEBUG: There are {} tokens.".format(self.lTokens.value))
+        logger.debug("DEBUG: There are {} tokens.".format(self.lTokens.value))
         # Populate the token dict
         self.tokens = self.get_tokens()
         for stoken in self.tokens:
-            print("{0}: {1}".format(stoken.serialnumber, "Default" if stoken.is_default else ""))
-
+            logger.debug("{0}: {1}".format(stoken.serialnumber, "Default" if stoken.is_default else ""))
 
     def open_service(self):
         try:
             # > 0 means success and dwBuffersize is set
             if self.process.OpenTokenService(byref(self.handle)) > 0:
-                print("DEBUG: Token service started, handle {}.".format(self.handle.value))
+                logger.debug("DEBUG: Token service started, handle {}.".format(self.handle.value))
             else:
-                print("No token service found!")
+                logger.error("No token service found!")
         except Exception as e:
-            print(e)
-            print("Error opening token service.")
+            logger.debug(e)
+            logger.error("Error opening token service.")
 
     def close_service(self):
         try:
             # > 0 means success
             if self.process.CloseTokenService(self.handle.value) > 0:
-                print("DEBUG: Token Service closed")
+                logger.debug("DEBUG: Token Service closed")
             else:
-                print("Could not close token service.")
+                logger.debug("Could not close token service.")
                 self.get_token_error()
         except Exception as e:
-            print(e)
-            print("Error closing service.")
+            logger.debug(e)
+            logger.error("Error closing service.")
 
     def count_tokens(self):
         # See if there are any registered tokens and set up the buffer
@@ -199,8 +220,8 @@ class SDProcess:
             # Send 0 the first time in case there are no tokens to grab
             self.process.EnumToken(self.handle, byref(self.lTokens), byref(self.lDefaultToken), 0, byref(dwBuffersize))
         except Exception as e:
-            print(e)
-            print("Error getting number of tokens.")
+            logger.debug(e)
+            logger.error("Error getting number of tokens.")
             return ''
 
         # if we got here, we didn't receive an error from the token service. The token count
@@ -218,7 +239,7 @@ class SDProcess:
 
         # First, see if there are any registered tokens. If not, return an empty dict
         if self.lTokens.value == 0:
-            print("There are no registered tokens.")
+            logger.debug("There are no registered tokens.")
             return {}
 
         # Create an array of token structs
@@ -231,14 +252,14 @@ class SDProcess:
         try:
             if self.process.EnumToken(self.handle, byref(self.lTokens), byref(self.lDefaultToken), byref(lpTokens),
                                       byref(self.dwBuffersize)) > 0:
-                print("{} tokens found:".format(self.lTokens.value))
+                logger.debug("{} tokens found:".format(self.lTokens.value))
             else:
-                print("Did not find any tokens.")
+                logger.debug("Did not find any tokens.")
                 self.get_token_error()
 
         except Exception as e:
-            print(e)
-            print("Error getting tokens.")
+            logger.debug(e)
+            logger.error("Error getting tokens.")
             self.get_token_error()
             return []
 
@@ -273,8 +294,8 @@ class SDProcess:
             self.process.GetCurrentCode(self.handle, serial.encode("utf-8"), chPIN,
                                         byref(lTimeLeft), chPASSCODE, chPRN)
         except Exception as e:
-            print(e)
-            print("Error getting token code.")
+            logger.debug(e)
+            logger.error("Error getting token code.")
             self.get_token_error()
         # On pinless tokens, PASSCODE and PRN will be the same
         return chPASSCODE.value.decode('utf-8'), chPRN.value.decode('utf-8'), lTimeLeft.value
@@ -296,8 +317,8 @@ class SDProcess:
                 self.get_token_error()
                 token_expiration = None
         except Exception as e:
-            print(e)
-            print("Error getting token expiration date.")
+            logger.debug(e)
+            logger.error("Error getting token expiration date.")
             self.get_token_error()
             token_expiration = None
 
@@ -315,10 +336,10 @@ class SDProcess:
                 content = lp_token_error.contents
                 if content.error != 0:
                     err_number = int(content.error)
-                    print("{0}: {1}".format(err_number, TokenError(err_number).name))
+                    logger.debug("{0}: {1}".format(err_number, TokenError(err_number).name))
                 else:
-                    print("No errors reported.")
+                    logger.debug("No errors reported.")
             else:
-                print("Returned NULL pointer.")
+                logger.debug("Returned NULL pointer.")
         else:
-            print("No token error content.")
+            logger.debug("No token error content.")

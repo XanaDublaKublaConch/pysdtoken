@@ -32,7 +32,7 @@ class struct_tagTOKENBASICINFO(Structure):
         ('serialnumber', c_char * 24),
         ('username', c_char * 24),
         ('deviceID', c_char * 24),
-        ('descriptor', c_char * 64),
+        ('descriptor', c_char * 48),
     ]
 
 

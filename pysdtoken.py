@@ -172,7 +172,8 @@ class SDProcess:
         else:
             try:
                 if self.dll_name == '':
-                    self.dll_name = '/Library/Frameworks/stauto32.framework/Versions/Current/stauto32'
+                    from ctypes.util import find_library
+                    self.dll_name = find_library('stauto32')
                 self.process = cdll.LoadLibrary(self.dll_name)
             except Exception as e:
                 logger.debug(e)

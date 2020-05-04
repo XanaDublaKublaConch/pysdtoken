@@ -11,7 +11,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/XanaDublaKublaConch/pysdtoken/",
-    packages=setuptools.find_packages(),
+    # packages=setuptools.find_packages(),
+    packages=['pysdtoken'],
     install_requires="pywin32-ctypes",
     calssifiers=[
         "Programming Language :: Python :: 3",

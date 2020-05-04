@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-jiraautolib/__pycache__/
 
 .idea
 

@@ -631,7 +631,7 @@ class SDProcess:
             logger.debug("Setting return type of GetNextCode to c_int64")
             svc_get_next.restype = c_int
 
-        svc_get_next.argtypes = [LONG, LPLONG, LPLONG, LPVOID, LPDWORD, LPDWORD]
+        svc_get_next.argtypes = [LONG, LPCSTR, LPCSTR, LPLONG, LPSTR, LPSTR,]
         logger.debug(f"Setting arguments for GetNextCode to {svc_get_next.argtypes}")
 
         logger.debug("Calling GetNextCode with ctypes.")

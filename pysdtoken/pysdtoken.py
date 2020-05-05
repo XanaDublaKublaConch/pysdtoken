@@ -6,13 +6,13 @@ ctypes to get the current code from the token
 from __future__ import annotations
 import platform
 import logging
-from typing import List, Dict, Union, NamedTuple, Tuple, Any, ByteString
+from typing import List, Dict, NamedTuple, Tuple, Any, ByteString, Union
 from pathlib import Path
 from collections import namedtuple
 from datetime import date
 from ctypes import c_long, c_int, c_char_p, c_void_p, windll, cdll, byref, create_string_buffer, pointer, POINTER, \
     c_int64
-from ctypes.wintypes import DWORD, INT, LONG, LPLONG, LPVOID, LPDWORD, LPSTR, LPCSTR
+from ctypes.wintypes import DWORD, INT, LONG, LPLONG, LPVOID, LPDWORD, LPSTR, LPCSTR, LPBOOL
 from ._sdauto import ck_date, token_basic_info, token_error_info, TokenError
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,17 @@ logger.addHandler(logging.NullHandler())
 if platform.system() == "Darwin":
     """ Support Mac OS """
     logger.debug("Identified Darwin system. Setting up Mac Darwin OS typedefs for wintypes names.")
+    if platform.architecture()[0] == "64bit":
+        logger.debug("Identified 64-bit Darwin system. Setting BOOL and INT to c_int64")
+        BOOL = c_int64
+        INT = c_int64
+    else:
+        logger.debug("Identified 32-bit Darwin system. Setting BOOL and INT to c_int")
+        BOOL = c_int
+        INT = c_int
+
+    LPBOOL = POINTER(BOOL)
     DWORD = c_long
-    INT = c_int
     LONG = c_long
     LPSTR = c_char_p
     LPCSTR = POINTER(c_char_p)
@@ -39,27 +48,27 @@ class Token:
 
     def __init__(self, serial, token_data: Dict):
         logger.debug('Initializing token with token data.')
-        self.serial_number = serial
-        self.process = token_data.get('token_service', None)
+        self.serial_number: str = serial
+        self.process: SDProcess = token_data.get('token_service', None)
         if not self.process:
             logger.warning("New token created without SD process. No active process methods will work.")
         logger.debug(f'SDProcess object: {self.process}')
         logger.debug(f'Serial: {self.serial_number}')
-        self.username = token_data.get('username', None)
+        self.username: str = token_data.get('username', None)
         logger.debug(f'Username: {self.username}')
-        self.deviceID = token_data.get('device_id', None)
+        self.deviceID: str = token_data.get('device_id', None)
         logger.debug(f'DeviceID: {self.deviceID}  (May be unused)')
-        self.descriptor = token_data.get('descriptor', None)
+        self.descriptor: str = token_data.get('descriptor', None)
         logger.debug(f'Descriptor: {self.descriptor}  (May be unused)')
-        self.is_default = token_data.get('is_default', False)
+        self.is_default: bool = token_data.get('is_default', False)
         logger.debug(f'Default: {self.is_default}')
         # If a pin-style is not given, default to PINLess
-        self.pin_style = token_data.get("pin_style", SDProcess.valid_pin_styles[0])
+        self.pin_style: str = token_data.get("pin_style", SDProcess.valid_pin_styles[0])
         logger.debug(f'Pin-Style: {self.pin_style}')
 
     def __repr__(self):
         # The most useful info (IMHO) is serial and pin-style. Serial is required and pin-style helps determine
-        # the passcode length
+        # the passcode length. Mark the default token with a *.
         if self.is_default:
             starburns = "*"
         else:
@@ -109,6 +118,18 @@ class Token:
         logger.info(f'Calling SDProcess to get next code for token {self.serial_number}')
         return TokenInfo(*self.process.get_token_next_code(self.serial_number, pin))
 
+    def can_get_next_code(self) -> bool:
+        """
+        Calls the SDProcess to check if the token can return the next code without blocking
+        :return: Boolean
+        """
+        if not self.process:
+            logger.critical('No SDProcess found while checking can_get_next_code')
+            raise RecursionError("No SDProcess found")
+
+        logger.info(f"Calling SDProcess to see if {self.serial_number} can get next code")
+        return self.process.can_token_get_next_code(self.serial_number)
+
     def set_sd_process(self, token_service: SDProcess) -> None:
         logger.info(f"Setting the SDProcess to object: {SDProcess}")
         self.process: SDProcess = token_service
@@ -130,10 +151,12 @@ class SDProcess:
     :param tokencode_length: tokencodes can be 6-8 digits
     """
     # This is what RSA calls the pin styles
-    valid_pin_styles = ("PINless", "PINPad-style", "Fob-style")
+    valid_pin_styles: List[str] = ("PINless", "PINPad-style", "Fob-style")
 
-    def __init__(self, dll_name='', log_level='WARNING', pin_length=8, tokencode_length=8, pin_style="PINless"):
+    def __init__(self, dll_name: str = '', log_level:str = 'WARNING', pin_length: int = 8, tokencode_length: int = 8,
+                 pin_style:str = "PINless"):
         # Set the logging level
+        n_log_level: int
         if log_level.casefold() == 'NOTSET'.casefold():
             n_log_level = logging.NOTSET
         elif log_level.casefold() == 'CRITICAL'.casefold():
@@ -223,12 +246,12 @@ class SDProcess:
             raise ValueError(f"Bad value for tokencode length {tokencode_length}")
 
         logger.info("Setting up SDProcess vars.")
-        self.tokens = []
-        self.lTokens = LONG()
-        self.lTokenServiceHandle = LONG()
-        self.lDefaultToken = LONG()
-        self.lTimeLeft = LONG()
-        self.dwBuffersize = DWORD(0)
+        self.tokens: List[Any] = []
+        self.lTokens: c_long = LONG()
+        self.lTokenServiceHandle: c_long = LONG()
+        self.lDefaultToken: c_long = LONG()
+        self.lTimeLeft: c_long = LONG()
+        self.dwBuffersize: c_long = DWORD(0)
 
         # Open the service
         logger.info(f"Opening SD Process from init")
@@ -248,7 +271,9 @@ class SDProcess:
         Python wrapper for the C++ call using ctypes this method should return a handle to the process that manages
         tokens using the sdauto32.dll typelib
         """
-        svc_open = self.process.OpenTokenService
+        # No idea how to typecheck ctypes function pointers
+        svc_open: Any = self.process.OpenTokenService
+
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of OpenTokenService to c_int64")
             svc_open.restype = c_int64
@@ -274,7 +299,7 @@ class SDProcess:
         Python wrapper for the C++ call using ctypes this method should return a handle to the process that manages
         tokens using the sdauto32.dll typelib
         """
-        svc_close = self.process.CloseTokenService
+        svc_close: Any = self.process.CloseTokenService
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of OpenTokenService to c_int64")
             svc_close.restype = c_int64
@@ -310,7 +335,7 @@ class SDProcess:
 
         :return: DWORD
         """
-        svc_enum = self.process.EnumToken
+        svc_enum: Any = self.process.EnumToken
 
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of EnumToken to c_int64")
@@ -362,13 +387,14 @@ class SDProcess:
 
         # Create an array of token structs
         logger.debug("Tokens are registered. Create a pointer to an array of empty TOKENBASICINFO structs to pass in")
-        lpTokens = (token_basic_info * self.lTokens.value)()
-        tokens = []
+        # I don't understand how to typecheck ctypes arrays of structs
+        lpTokens: Any = (token_basic_info * self.lTokens.value)()
+        tokens: List = []
 
         # There are lTokens # of tokens. Get them in an array. The dwBuffersize has to have been set
         # previously, which is done during init in the enum_tokens() call. If dwBuffer points to a
         # null DWORD, the function will return zero/false and fill dwBuffersize with the correct size
-        svc_enum = self.process.EnumToken
+        svc_enum: Any = self.process.EnumToken
 
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of EnumToken to c_int64")
@@ -406,7 +432,7 @@ class SDProcess:
         logger.debug("Parsing tokenbasicinfo structs frrom list into python dicts")
         for x, token in enumerate(lpTokens):
             logger.debug("Building token data dict from ctypes return data")
-            token_data = {}
+            token_data: Dict[str, Union[str, SDProcess, bool]] = {}
             token_data.update({'token_service': self})
             logger.debug(f"Added token service (self) {self}")
             token_data.update({'username': token.username.decode('utf-8')})
@@ -415,7 +441,7 @@ class SDProcess:
             logger.debug(f"Added device_id {token_data['device_id']}")
             token_data.update({'descriptor': token.descriptor})
             logger.debug(f"Added descriptor {token_data['descriptor']}")
-            serial = token.serial_number.decode('utf-8')
+            serial: str = token.serial_number.decode('utf-8')
             logger.debug(f"Added serial number {serial}")
 
             # Check to see if we're the default token
@@ -443,6 +469,20 @@ class SDProcess:
 
         logging.warning("There was not default token recognized by the SD Process.")
 
+    def get_token_by_serial(self, serial: str) -> Token:
+        """
+        Try to get the token with a specific serial number
+        :return: Token
+        """
+        logger.debug(f"Getting a token by serial number ({serial})")
+        for token in self.tokens:
+            logger.debug(f"Comparing {token.serial_number} and {serial}")
+            if token.serial_number == serial:
+                logger.debug(f"Match: returning token {serial}")
+                return token
+
+        logger.warning("No match found.")
+
     def get_token_current_code(self, serial: str, pin_style: str, pin: str = '') -> Tuple[ByteString, Any, int]:
         # The Pièce de résistance of this lib. Get the current code that would be displayed on the token screen
         # return a tuple of code + time-left.
@@ -460,21 +500,21 @@ class SDProcess:
 
         logger.debug(f"Pin style is {pin_style}")
         if self.pin_style == "Fob-style":
-            passcode_length = self.pin_length + self.tokencode_length
+            passcode_length: int = self.pin_length + self.tokencode_length
         else:
-            passcode_length = self.pin_length + self.tokencode_length
+            passcode_length: int = self.pin_length + self.tokencode_length
 
         logger.debug(f"Passcode length is now {passcode_length}")
 
         logger.debug("Creating string buffers for passcode and pincode argument vars")
 
         # ctypes strings are bytes
-        chPASSCODE = create_string_buffer(passcode_length)
-        chPRN = create_string_buffer(self.tokencode_length)
-        chPIN = c_char_p(pin.encode('utf-8'))
-        lTimeLeft = LONG()
+        chPASSCODE: Any = create_string_buffer(passcode_length)
+        chPRN: Any = create_string_buffer(self.tokencode_length)
+        chPIN: c_char_p = c_char_p(pin.encode('utf-8'))
+        lTimeLeft: c_long = LONG()
 
-        svc_get_code = self.process.GetCurrentCode
+        svc_get_code: Any = self.process.GetCurrentCode
 
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of GetCurrentCode to c_int64")
@@ -509,14 +549,49 @@ class SDProcess:
         logger.debug(f"Returning the passcode:{chPASSCODE.value}, tokencode: {chPRN.value}, and time left: {lTimeLeft}")
         return chPASSCODE.value.decode('utf-8'), chPRN.value.decode('utf-8'), lTimeLeft.value
 
-    def can_get_next_code(self):
+    def can_token_get_next_code(self, serial: str) -> bool:
         """
-        Not Yet Implemented
+        Determine if the token can get a new code without blocking. I'm not sure how this is used. ???!!
+        :param: serial the serial number of the token
+        :return: Boolean
         """
-        pass
+        logger.debug("Checking if next code is blocked")
+        svc_can_get_next: Any = self.process.CanTokenGetNextCode
 
+        if platform.architecture()[0] == "64bit":
+            logger.debug("Setting return type of GetNextCode to c_int64")
+            svc_can_get_next.restype = c_int64
+        else:
+            logger.debug("Setting return type of GetNextCode to c_int64")
+            svc_can_get_next.restype = c_int
 
-    def get_token_next_code(self, serial: str, pin: str = ''):
+        can_it_tho: pointer = LPBOOL(c_long(0))
+
+        svc_can_get_next.argtypes = [LONG, LPCSTR, LPBOOL, ]
+        logger.debug(f"Setting arguments for CanTokenGetNextCode to {svc_can_get_next.argtypes}")
+        logger.debug("Calling GetNextCode with ctypes.")
+
+        try:
+            if svc_can_get_next(
+                self.lTokenServiceHandle,
+                serial.encode('utf-8'),
+                can_it_tho
+            ) > 0:
+                logger.debug("Call to CanTokenGetNextCode succeeded")
+            else:
+                logger.error("Call to CanTokenGetNextCode failed")
+                self.get_token_error()
+
+        except Exception as e:
+            logger.debug(e)
+            logger.error("Error getting next token code.")
+            self.get_token_error()
+
+        logger.debug(f"Got {can_it_tho.contents}")
+
+        return bool(can_it_tho.contents)
+
+    def get_token_next_code(self, serial: str, pin: str = '') -> Tuple[ByteString, Any, int]:
         # get the next passcode or tokencode (PRN) from a specified token
         # return a named tuple of passcode, tokencode, time-left
         # When using PINs with get_token_next_code, the passcode returned will vary based on the type of token.
@@ -540,14 +615,14 @@ class SDProcess:
             logger.debug("PINLess or PINPad token. Tokencode and passcode length are equal.")
             passcode_length = self.tokencode_length
 
-        chPASSCODE = create_string_buffer(passcode_length)
-        chPRN = create_string_buffer(self.tokencode_length)
+        chPASSCODE: Any = create_string_buffer(passcode_length)
+        chPRN: Any = create_string_buffer(self.tokencode_length)
 
         # ctypes strings are bytes
-        chPIN = c_char_p(pin.encode('utf-8'))
-        lTimeLeft = LONG()
+        chPIN: c_char_p = c_char_p(pin.encode('utf-8'))
+        lTimeLeft: c_long = LONG()
 
-        svc_get_next = self.process.GetNextCode
+        svc_get_next: Any = self.process.GetNextCode
 
         if platform.architecture()[0] == "64bit":
             logger.debug("Setting return type of GetNextCode to c_int64")
@@ -560,8 +635,6 @@ class SDProcess:
         logger.debug(f"Setting arguments for GetNextCode to {svc_get_next.argtypes}")
 
         logger.debug("Calling GetNextCode with ctypes.")
-
-
         try:
             self.process.GetNextCode(
                 self.lTokenServiceHandle,
@@ -578,10 +651,22 @@ class SDProcess:
         # On pinless tokens, PASSCODE and PRN will be the same
         return chPASSCODE.value.decode('utf-8'), chPRN.value.decode('utf-8'), lTimeLeft.value
 
-    def get_token_expiration_date(self, serial):
+    def get_token_expiration_date(self, serial: str) -> date:
         # Get the expiration date of the token with this serial number
         # The date is returned as a CKDATE struct
-        expiration_date = ck_date()
+        expiration_date: ck_date = ck_date()
+
+        svc_get_exp: Any = self.process.GetTokenExpirationDate
+
+        if platform.architecture()[0] == "64bit":
+            logger.debug("Setting return type of GetTokenExpirationDate to c_int64")
+            svc_get_exp.restype = c_int64
+        else:
+            logger.debug("Setting return type of GetTokenExpirationDate to c_int")
+            svc_get_exp.restype = c_int
+
+        svc_get_exp.argtypes = [LONG, LPCSTR, ck_date,]
+        logger.debug(f"Setting arguments for GetNextCode to {svc_get_exp.argtypes}")
 
         # Get the struct and parse it - Should I use datetime library here instead of a string?
         try:
@@ -599,18 +684,18 @@ class SDProcess:
             else:
                 self.get_token_error()
                 logger.warning("GetTokenExpirationDate returned 0")
-                printable_date = None
+                printable_date: date = None
         except Exception as e:
             logger.debug(e)
             logger.error("Error getting token expiration date.")
             self.get_token_error()
-            printable_date = None
+            printable_date: date = None
 
         return printable_date
 
     def get_token_error(self):
         # Get any token error. Create a TOKENERRORINFO struct
-        token_error = token_error_info()
+        token_error: token_error_info = token_error_info()
 
         # get a pointer to use in the dll call
         lp_token_error = pointer(token_error)
@@ -622,14 +707,14 @@ class SDProcess:
         ) > 0:
             if lp_token_error and token_error:
                 # Dereference the pointer/get contents
-                content = lp_token_error.contents
+                content: token_error_info = lp_token_error.contents
                 if content.error != 0:
-                    err_number = INT(content.error).value
-                    err_string = content.error_string.decode('utf-8')
-                    detailed_error_string = content.detailed_error_string.decode('utf-8')
+                    err_number: int = INT(content.error).value
+                    err_string: str = content.error_string.decode('utf-8')
+                    detailed_error_string: str = content.detailed_error_string.decode('utf-8')
                     logger.debug(
                         f"Last Token Error from SDProcess: {err_number}: {TokenError(err_number).name}"
-                        f"{err_string}\n{detailed_error_string}"
+                        f"\n{err_string}\n{detailed_error_string}"
                     )
                 else:
                     logger.debug("No errors reported from SDProcess.")

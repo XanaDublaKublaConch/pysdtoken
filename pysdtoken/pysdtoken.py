@@ -255,18 +255,18 @@ class SDProcess:
 
         # Open the service
         logger.info(f"Opening SD Process from init")
-        self.open_service()
+        self._open_service()
 
         # Populate lTokens and dwBuffersize
         logger.info(f"Enumerating tokens from init")
-        self.enum_tokens()
+        self._enum_tokens()
         logger.debug(f"There are {self.lTokens.value} tokens.")
 
         # Populate the token dict
         logger.info("Populating token dictionary from init")
-        self.tokens = self.get_tokens()
+        self.tokens = self._get_tokens()
 
-    def open_service(self):
+    def _open_service(self):
         """
         Python wrapper for the C++ call using ctypes this method should return a handle to the process that manages
         tokens using the sdauto32.dll typelib
@@ -324,7 +324,7 @@ class SDProcess:
             logger.debug(e)
             logger.error("Error closing service.")
 
-    def enum_tokens(self) -> DWORD:
+    def _enum_tokens(self) -> DWORD:
         """
         Python wrapper for the C++ call using ctypes this method should return a handle to the process that manages
         tokens using the sdauto32.dll typelib
@@ -368,7 +368,7 @@ class SDProcess:
             self.get_token_error()
             return DWORD(0)
 
-    def get_tokens(self) -> List[Token]:
+    def _get_tokens(self) -> List[Token]:
         """
         Python wrapper for the C++ call using ctypes. This method should return a list of tokeninfo objects from the
         process as tokeninfo structs from c++. The python methods will parse these structs into usable Token class
@@ -569,7 +569,7 @@ class SDProcess:
 
         svc_can_get_next.argtypes = [LONG, LPCSTR, LPBOOL, ]
         logger.debug(f"Setting arguments for CanTokenGetNextCode to {svc_can_get_next.argtypes}")
-        logger.debug("Calling GetNextCode with ctypes.")
+        logger.debug("Calling CanTokenGetNextCode with ctypes.")
 
         try:
             if svc_can_get_next(
@@ -665,8 +665,9 @@ class SDProcess:
             logger.debug("Setting return type of GetTokenExpirationDate to c_int")
             svc_get_exp.restype = c_int
 
-        svc_get_exp.argtypes = [LONG, LPCSTR, ck_date,]
-        logger.debug(f"Setting arguments for GetNextCode to {svc_get_exp.argtypes}")
+        svc_get_exp.argtypes = [LONG, LPCSTR, POINTER(ck_date),]
+        logger.debug(f"Setting arguments for GetTokenExpirationDate to {svc_get_exp.argtypes}")
+        logger.debug(f"Calling GetTokenExpirationDate for token with serial {serial}")
 
         # Get the struct and parse it - Should I use datetime library here instead of a string?
         try:
@@ -674,7 +675,7 @@ class SDProcess:
             if self.process.GetTokenExpirationDate(
                     self.lTokenServiceHandle,
                     serial.encode('utf-8'),
-                    byref(expiration_date)
+                    expiration_date
             ) > 0:
                 logger.info("GetTokenExpirationDate: Got token expiration date struct")
                 month: str = bytes(expiration_date.month).decode('utf-8')
@@ -693,7 +694,7 @@ class SDProcess:
 
         return printable_date
 
-    def get_token_error(self):
+    def get_token_error(self) -> str:
         # Get any token error. Create a TOKENERRORINFO struct
         token_error: token_error_info = token_error_info()
 
@@ -712,16 +713,19 @@ class SDProcess:
                     err_number: int = INT(content.error).value
                     err_string: str = content.error_string.decode('utf-8')
                     detailed_error_string: str = content.detailed_error_string.decode('utf-8')
-                    logger.debug(
-                        f"Last Token Error from SDProcess: {err_number}: {TokenError(err_number).name}"
-                        f"\n{err_string}\n{detailed_error_string}"
-                    )
+                    err_msg = f"Last Token Error from SDProcess: {err_number}: {TokenError(err_number).name}"
+                    f"\n{err_string}\n{detailed_error_string}"
+                    logger.debug(err_msg)
+                    return err_msg
                 else:
                     logger.debug("No errors reported from SDProcess.")
+                    return "No error"
             else:
                 logger.debug("SDProcess Returned NULL pointer for last token error.")
+                return "SD Error: No handle to token error"
         else:
             logger.debug("SD Process last token error has no content.")
+            return "No content"
 
     def __del__(self):
         """

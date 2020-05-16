@@ -6,7 +6,8 @@ with open("README.md", "r") as fh:
 setuptools.setup(
     name="pysdtoken",
     version="1.0.0",
-    author="Johnny Birchett",
+    author="XanaDublaKublaConch",
+    author_email="XanaDublaKublaConch@styrophobia.org",
     description="Pythonic wrapper for the RSA sdauto32.dll soft token service",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -18,6 +19,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
+        "Development Status :: 5 - Production/Stable",
     ],
     python_requires='>=3.7',
 )

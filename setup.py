@@ -15,7 +15,7 @@ setuptools.setup(
     # packages=setuptools.find_packages(),
     packages=['pysdtoken'],
     install_requires="pywin32-ctypes",
-    calssifiers=[
+    classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",

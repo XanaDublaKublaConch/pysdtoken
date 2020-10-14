@@ -188,6 +188,7 @@ class SDProcess:
         if dll_name:  # Passed in from init args
             self.dll_name = dll_name
             logger.debug(f'DLL name set to {self.dll_name} from arguments')
+            self.process = windll.LoadLibrary(self.dll_name)
 
         else:
             logger.debug("No dll name passed in during initialization. Determining correct default from platform/arch")

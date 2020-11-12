@@ -2,11 +2,16 @@ from enum import Enum
 import platform
 from ctypes import c_char, c_int, c_long, c_ubyte
 from ctypes import Structure
-from ctypes.wintypes import DWORD, INT
 
-if platform.system() == "Darwin":
+if platform.system() == "Windows":
+    from ctypes.wintypes import DWORD, INT
+
+elif platform.system() == "Darwin":
     DWORD = c_long
     INT = c_int
+
+else:
+    exit(f"Unsupported platform: {platform.system()}")
 
 
 # A struct to hold token information
@@ -23,6 +28,7 @@ class struct_tagTOKENBASICINFO(Structure):
 
 token_basic_info = struct_tagTOKENBASICINFO
 
+
 # A struct to hold token error information
 class struct_tagTOKENERRORINFO(Structure):
     _pack_ = 1  # source:False
@@ -34,6 +40,7 @@ class struct_tagTOKENERRORINFO(Structure):
 
 
 token_error_info = struct_tagTOKENERRORINFO
+
 
 # A struct to hold dates
 class struct_CK_DATE(Structure):
@@ -49,6 +56,7 @@ class struct_CK_DATE(Structure):
 
 
 ck_date = struct_CK_DATE
+
 
 # Enum for Errors
 class TokenError(Enum):

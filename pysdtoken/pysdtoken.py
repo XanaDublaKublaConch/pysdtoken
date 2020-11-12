@@ -10,24 +10,28 @@ from typing import List, Dict, NamedTuple, Tuple, Any, ByteString, Union
 from pathlib import Path
 from collections import namedtuple
 from datetime import date
-from ctypes import c_long, c_int, c_char_p, c_void_p, windll, cdll, byref, create_string_buffer, pointer, POINTER, \
+from ctypes import c_long, c_int, c_char_p, c_void_p, cdll, byref, create_string_buffer, pointer, POINTER, \
     c_int64
-from ctypes.wintypes import DWORD, INT, LONG, LPLONG, LPVOID, LPDWORD, LPSTR, LPCSTR, LPBOOL
 from ._sdauto import ck_date, token_basic_info, token_error_info, TokenError
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-if platform.system() == "Darwin":
+if platform.system() == "Windows":
+    """ Windows-specific setup"""
+    from ctypes import windll
+    from ctypes.wintypes import INT, LPBOOL, DWORD, LONG, LPSTR, LPCSTR, LPLONG, LPDWORD, LPVOID
+
+elif platform.system() == "Darwin":
     """ Support Mac OS """
     logger.debug("Identified Darwin system. Setting up Mac Darwin OS typedefs for wintypes names.")
     if platform.architecture()[0] == "64bit":
         logger.debug("Identified 64-bit Darwin system. Setting BOOL and INT to c_int64")
-        BOOL = c_int64
+        BOOL = c_int64  # We need this in order to set up LPBOOL
         INT = c_int64
     else:
         logger.debug("Identified 32-bit Darwin system. Setting BOOL and INT to c_int")
-        BOOL = c_int
+        BOOL = c_int  # We need this in order to set up LPBOOL
         INT = c_int
 
     LPBOOL = POINTER(BOOL)
@@ -38,6 +42,9 @@ if platform.system() == "Darwin":
     LPLONG = POINTER(LONG)
     LPDWORD = POINTER(DWORD)
     LPVOID = c_void_p
+
+else:
+    exit(f"Unsupported platform: {platform.system()}")
 
 
 class Token:
@@ -153,8 +160,8 @@ class SDProcess:
     # This is what RSA calls the pin styles
     valid_pin_styles: List[str] = ("PINless", "PINPad-style", "Fob-style")
 
-    def __init__(self, dll_name: str = '', log_level:str = 'WARNING', pin_length: int = 8, tokencode_length: int = 8,
-                 pin_style:str = "PINless"):
+    def __init__(self, dll_name: str = '', log_level: str = 'WARNING', pin_length: int = 8, tokencode_length: int = 8,
+                 pin_style: str = "PINless"):
         # Set the logging level
         n_log_level: int
         if log_level.casefold() == 'NOTSET'.casefold():
@@ -193,20 +200,27 @@ class SDProcess:
             logger.debug("No dll name passed in during initialization. Determining correct default from platform/arch")
             if platform.system() == 'Windows':
                 logger.debug("This is a windows platform.")
-                if platform.architecture()[0] == "64bit":
-                    logger.debug("This is a 64-bit platform.")
-                    dll_path = Path(r"C:\Program Files\RSA SecurID Token Common\stauto32.dll")
-                    logger.info(f"Using path {dll_path}")
+
+                # Find the path based on cpu architecture of none specified
+                if not dll_name:
+                    if platform.architecture()[0] == "64bit":
+                        logger.debug("This is a 64-bit platform.")
+                        dll_path = Path(r"C:\Program Files\RSA SecurID Token Common\stauto32.dll")
+                        logger.info(f"Using path {dll_path}")
+                    else:
+                        logger.debug("This is a 32-bit platform.")
+                        dll_path = Path(r"C:\Program Files (x86)\RSA SecurID Token Common\stauto32.dll")
+                        logger.info(f"Using path {dll_path}")
                 else:
-                    logger.debug("This is a 32-bit platform.")
-                    dll_path = Path(r"C:\Program Files (x86)\RSA SecurID Token Common\stauto32.dll")
-                    logger.info(f"Using path {dll_path}")
+                    dll_path = Path(dll_name)
+
                 if dll_path.exists():
                     logger.debug(f"dll path {dll_path} exists.")
                     self.dll_name = str(dll_path)
                 else:
                     logger.warning(f"dll path {dll_path} does not exist. Setting dll_name to stauto32.dll")
-                    self.dll_name = 'stauto32.dll' # Hopefully, it's in the path
+                    self.dll_name = 'stauto32.dll'  # Hopefully, it's in the path
+
                 try:
                     logger.debug(f"Loading {dll_path} using ctypes windll method")
                     self.process = windll.LoadLibrary(self.dll_name)
